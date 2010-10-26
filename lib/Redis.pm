@@ -41,33 +41,33 @@ with same peace of code with a little help of C<AUTOLOAD>.
 =cut
 
 sub new {
-	my $class = shift;
-	my $self = {@_};
-	$self->{debug} ||= $ENV{REDIS_DEBUG};
+    my $class = shift;
+    my $self = {@_};
+    $self->{debug} ||= $ENV{REDIS_DEBUG};
 
-	$self->{sock} = IO::Socket::INET->new(
-		PeerAddr => $self->{server} || $ENV{REDIS_SERVER} || '127.0.0.1:6379',
-		Proto => 'tcp',
-	) || die $!;
+    $self->{sock} = IO::Socket::INET->new(
+        PeerAddr => $self->{server} || $ENV{REDIS_SERVER} || '127.0.0.1:6379',
+        Proto => 'tcp',
+    ) || die $!;
 
-	bless($self, $class);
-	$self;
+    bless($self, $class);
+    $self;
 }
 
 my $bulk_command = {
-	set => 1,	setnx => 1,
-	rpush => 1,	lpush => 1,
-	lset => 1,	lrem => 1,
-	sadd => 1,	srem => 1,
-	sismember => 1,
-	echo => 1,
-	getset => 1,
-	smove => 1,
-	zadd => 1,
-	zrem => 1,
-	zscore => 1,
-	zincrby => 1,
-	append => 1,
+    set => 1,    setnx => 1,
+    rpush => 1,    lpush => 1,
+    lset => 1,    lrem => 1,
+    sadd => 1,    srem => 1,
+    sismember => 1,
+    echo => 1,
+    getset => 1,
+    smove => 1,
+    zadd => 1,
+    zrem => 1,
+    zscore => 1,
+    zincrby => 1,
+    append => 1,
 };
 
 # we don't want DESTROY to fallback into AUTOLOAD
@@ -75,106 +75,113 @@ sub DESTROY {}
 
 our $AUTOLOAD;
 sub AUTOLOAD {
-	my $self = shift;
+    my $self = shift;
 
-	my $sock = $self->{sock} || die "no server connected";
+    my $sock = $self->{sock} || die "no server connected";
 
-	my $command = $AUTOLOAD;
-	$command =~ s/.*://;
+    my $command = $AUTOLOAD;
+    $command =~ s/.*://;
 
-	warn "## $command ",Dumper(@_) if $self->{debug};
+    no strict 'refs';
 
-	my $send;
+    *$command = sub {
+        my $self = shift;
 
-	if ( defined $bulk_command->{$command} ) {
-		my $value = pop;
-		$value = '' if ! defined $value;
-		$send
-			= uc($command)
-			. ' '
-			. join(' ', @_)
-			. ' ' 
-			. length( $value )
-			. "\r\n$value\r\n"
-			;
-	} else {
-		$send
-			= uc($command)
-			. ' '
-			. join(' ', @_)
-			. "\r\n"
-			;
-	}
+        warn "## $command ",Dumper(@_) if $self->{debug};
 
-	warn ">> $send" if $self->{debug};
-	print $sock $send;
+        my $send;
 
-	if ( $command eq 'quit' ) {
-		close( $sock ) || die "can't close socket: $!";
-		return 1;
-	}
+        if ( defined $bulk_command->{$command} ) {
+            my $value = pop;
+            $value = '' if ! defined $value;
+            $send
+                = uc($command)
+                . ' '
+                . join(' ', @_)
+                . ' ' 
+                . length( $value )
+                . "\r\n$value\r\n"
+                ;
+        } else {
+            $send
+                = uc($command)
+                . ' '
+                . join(' ', @_)
+                . "\r\n"
+                ;
+        }
 
-	my $result = <$sock> || die "can't read socket: $!";
-	warn "<< $result" if $self->{debug};
-	my $type = substr($result,0,1);
-	$result = substr($result,1,-2);
+        warn ">> $send" if $self->{debug};
+        print $sock $send;
 
-	if ( $command eq 'info' ) {
-		my $hash;
-		foreach my $l ( split(/\r\n/, $self->__read_bulk($result) ) ) {
-			my ($n,$v) = split(/:/, $l, 2);
-			$hash->{$n} = $v;
-		}
-		return $hash;
-	} elsif ( $command eq 'keys' ) {
-		my $keys = $self->__read_bulk($result);
-		return split(/\s/, $keys) if $keys;
-		return;
-	}
+        if ( $command eq 'quit' ) {
+            close( $sock ) || die "can't close socket: $!";
+            return 1;
+        }
 
-	if ( $type eq '-' ) {
-		confess $result;
-	} elsif ( $type eq '+' ) {
-		return $result;
-	} elsif ( $type eq '$' ) {
-		return $self->__read_bulk($result);
-	} elsif ( $type eq '*' ) {
-		return $self->__read_multi_bulk($result);
-	} elsif ( $type eq ':' ) {
-		return $result; # FIXME check if int?
-	} else {
-		confess "unknown type: $type", $self->__read_line();
-	}
+        my $result = <$sock> || die "can't read socket: $!";
+        warn "<< $result" if $self->{debug};
+        my $type = substr($result,0,1);
+        $result = substr($result,1,-2);
+
+        if ( $command eq 'info' ) {
+            my $hash;
+            foreach my $l ( split(/\r\n/, $self->__read_bulk($result) ) ) {
+                my ($n,$v) = split(/:/, $l, 2);
+                $hash->{$n} = $v;
+            }
+            return $hash;
+        } elsif ( $command eq 'keys' ) {
+            my $keys = $self->__read_bulk($result);
+            return split(/\s/, $keys) if $keys;
+            return;
+        }
+
+        if ( $type eq '-' ) {
+            confess $result;
+        } elsif ( $type eq '+' ) {
+            return $result;
+        } elsif ( $type eq '$' ) {
+            return $self->__read_bulk($result);
+        } elsif ( $type eq '*' ) {
+            return $self->__read_multi_bulk($result);
+        } elsif ( $type eq ':' ) {
+            return $result; # FIXME check if int?
+        } else {
+            confess "unknown type: $type", $self->__read_line();
+        }
+    };
+    goto sub { $self->$command(@_) };
 }
 
 sub __read_bulk {
-	my ($self,$len) = @_;
-	return undef if $len < 0;
+    my ($self,$len) = @_;
+    return undef if $len < 0;
 
-	my $v;
-	if ( $len > 0 ) {
-		read($self->{sock}, $v, $len) || die $!;
-		warn "<< ",Dumper($v),$/ if $self->{debug};
-	}
-	my $crlf;
-	read($self->{sock}, $crlf, 2); # skip cr/lf
-	return $v;
+    my $v;
+    if ( $len > 0 ) {
+        read($self->{sock}, $v, $len) || die $!;
+        warn "<< ",Dumper($v),$/ if $self->{debug};
+    }
+    my $crlf;
+    read($self->{sock}, $crlf, 2); # skip cr/lf
+    return $v;
 }
 
 sub __read_multi_bulk {
-	my ($self,$size) = @_;
-	return undef if $size < 0;
-	my $sock = $self->{sock};
+    my ($self,$size) = @_;
+    return undef if $size < 0;
+    my $sock = $self->{sock};
 
-	$size--;
+    $size--;
 
-	my @list = ( 0 .. $size );
-	foreach ( 0 .. $size ) {
-		$list[ $_ ] = $self->__read_bulk( substr(<$sock>,1,-2) );
-	}
+    my @list = ( 0 .. $size );
+    foreach ( 0 .. $size ) {
+        $list[ $_ ] = $self->__read_bulk( substr(<$sock>,1,-2) );
+    }
 
-	warn "## list = ", Dumper( @list ) if $self->{debug};
-	return @list;
+    warn "## list = ", Dumper( @list ) if $self->{debug};
+    return @list;
 }
 
 1;
@@ -385,8 +392,8 @@ automatically be notified of progress on your bug as I make changes.
 You can find documentation for this module with the perldoc command.
 
     perldoc Redis
-	perldoc Redis::List
-	perldoc Redis::Hash
+    perldoc Redis::List
+    perldoc Redis::Hash
 
 
 You can also look for information at:
