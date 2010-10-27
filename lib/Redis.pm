@@ -77,8 +77,6 @@ our $AUTOLOAD;
 sub AUTOLOAD {
     my $self = shift;
 
-    my $sock = $self->{sock} || die "no server connected";
-
     my $command = $AUTOLOAD;
     $command =~ s/.*://;
 
@@ -111,6 +109,8 @@ sub AUTOLOAD {
                 ;
         }
 
+		my $sock = $self->{sock} || die "no server connected";
+
         warn ">> $send" if $self->{debug};
         print $sock $send;
 
@@ -131,10 +131,6 @@ sub AUTOLOAD {
                 $hash->{$n} = $v;
             }
             return $hash;
-        } elsif ( $command eq 'keys' ) {
-            my $keys = $self->__read_bulk($result);
-            return split(/\s/, $keys) if $keys;
-            return;
         }
 
         if ( $type eq '-' ) {
