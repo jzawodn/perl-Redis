@@ -3,6 +3,8 @@ Changes from the mainline CPAN module:
   * added support for the new commands in Redis 1.2.x (sorted sets,
     etc).  all are new bulk commands (zadd, zrem, zscore, etc.)
 
+  * removed all the encoding stuff (for now)
+
 Fixes being considered:
 
   * adding a "use bytes" in AUTOLOAD to prevent issues with wide
